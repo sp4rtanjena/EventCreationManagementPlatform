@@ -5,7 +5,7 @@ import passport from "passport"
 import session from "express-session"
 import { userRouter } from "./api/routes/userRoutes.js"
 import { eventRouter } from "./api/routes/eventRoutes.js"
-import "../src/api/middlewares/passport-setup.js"
+import "./api/middlewares/OAuthMiddleware.js"
 
 dotenv.config()
 
@@ -15,8 +15,6 @@ const DB_URL = process.env.DB_URL
 
 app.use(express.json())
 app.use(urlencoded({ extended: true }))
-
-
 
 app.use(session({
     secret: process.env.SESSION_SECRET,

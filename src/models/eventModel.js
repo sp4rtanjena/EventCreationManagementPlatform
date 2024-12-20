@@ -1,6 +1,8 @@
 import { Schema, model } from "mongoose"
 import axios from "axios"
 import dotenv from "dotenv"
+import { sendInvitationEmail } from "../api/controllers/eventController.js"
+import { userData } from "./userModel.js"
 
 dotenv.config()
 
@@ -8,66 +10,97 @@ const locationSchema = new Schema({
     name: { type: String },
     address: { type: String },
     lat: { type: Number },
-    lng: { type: Number }
+    lng: { type: Number },
 })
 
 locationSchema.methods.setCoordinates = async function () {
     if (this.address) {
-        const coordinates = await getCoordinates(this.address)
-        this.lat = coordinates.lat
-        this.lng = coordinates.lng
+        try {
+            const coordinates = await getCoordinates(this.address)
+            this.lat = coordinates.lat
+            this.lng = coordinates.lng
+        } catch (err) {
+            console.error("Error setting coordinates:", err)
+            throw new Error("Failed to set coordinates for the location.")
+        }
     }
 }
 
 const getCoordinates = async (address) => {
-    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${process.env.GOOGLE_API_KEY}`
-
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}`
     try {
         const response = await axios.get(url)
-        if (response.data.status === "OK") {
-            const location = response.data.results[0].geometry.location
+        if (response.data && response.data.length > 0) {
+            const location = response.data[0]
+            // console.log(location)
             return {
-                lat: location.lat,
-                lng: location.lng
+                lat: parseFloat(location.lat),
+                lng: parseFloat(location.lon),
             }
-        } else throw new Error("Unable to fetch coordinates.")
+        } else {
+            throw new Error("No results found for the address.")
+        }
     } catch (err) {
         console.error(err)
-        throw err
+        throw new Error("Unable to fetch coordinates.")
     }
 }
 
-
-
-const dateTimeSchema = new Schema({
-    summary: { type: String },
-    start: { dateTime: Date, timeZone: String },
-    end: { dateTime: Date, timeZone: String },
-})
-
 const mediaSchema = new Schema({
-    filename: { type: String, required: true },
-    path: { type: String, required: true },
+    url: { type: String, required: true },
     type: { type: String, required: true },
-    size: { type: Number, required: true }
 })
 
 const eventSchema = new Schema({
     title: { type: String, required: true },
-    desc: { type: String, default: "" },
-    expectedNoGuests: { type: Number },
+    desc: { type: String },
+    dateTime: {
+        summary: { type: String, required: true },
+        start: {
+            dateTime: { type: Date, required: true },
+            timeZone: { type: String, required: true },
+        },
+        end: {
+            dateTime: { type: Date, required: true },
+            timeZone: { type: String, required: true },
+        },
+    },
     location: locationSchema,
-    dateTime: dateTimeSchema,
     media: [mediaSchema],
-    created_at: { type: Date, default: Date.now },
-    updated_at: { type: Date, default: Date.now }
+    invitees: [{ type: Schema.Types.ObjectId, ref: "User" }],
+    rsvpStatus: [
+        {
+            user: { type: Schema.Types.ObjectId, ref: "User" },
+            status: { type: String, enum: ["attending", "maybe", "not attending"], default: "maybe" },
+        },
+    ],
+    reminderSettings: {
+        sendReminderBefore: { type: String, enum: ["1 week", "1 day"], required: true, default: "1 day" },
+        reminderSent: { type: Boolean, default: false },
+    },
 })
 
-// Update updated_at everytime the document is modified.
 eventSchema.pre("save", async function (next) {
-    if (this.isModified("location.address")) await this.location.setCoordinates()
-    this.updated_at = Date.now()
-    next()
+    if (!this.isModified("rsvpStatus")) return next()
+
+    try {
+        const changedToAttending = this.rsvpStatus.filter(status => status.isModified("status") && status.status === "attending")
+
+        if (changedToAttending.length > 0) {
+            for (let status of changedToAttending) {
+                const user = await userData.findById(status.user)
+
+                if (user) {
+                    await sendInvitationEmail(user.email, this)
+                }
+            }
+        }
+
+        next()
+    } catch (err) {
+        console.error("Error in pre-save hook:", err)
+        next(err)
+    }
 })
 
 const eventData = model("Event", eventSchema)
