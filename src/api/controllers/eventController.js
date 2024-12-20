@@ -138,6 +138,19 @@ const createEventInDatabase = async (req, res) => {
     }
 }
 
+const getAllEvents = async (req, res) => {
+    try {
+        const events = await eventData.find()
+        if (events.length === 0) {
+            return res.status(404).json({ msg: "No Events Created yet." })
+        }
+        return res.status(200).json({ events })
+    } catch (err) {
+        return res.status(500).json({ msg: "Error creating event", error: err.message })
+    }
+
+}
+
 
 const getEvent = async (req, res) => {
     const { id } = req.params
@@ -243,6 +256,7 @@ const sendInvitationEmail = async (toEmail, event) => {
 
 export {
     createEventInDatabase,
+    getAllEvents,
     getEvent,
     updateRSVP,
     getRSVPs,

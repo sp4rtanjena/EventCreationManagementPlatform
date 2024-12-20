@@ -1,5 +1,5 @@
 import express from "express"
-import { createEventInDatabase, getEvent, getRSVPs, updateRSVP } from "../controllers/eventController.js"
+import { createEventInDatabase, getAllEvents, getEvent, getRSVPs, updateRSVP } from "../controllers/eventController.js"
 import { authMiddleware } from "../middlewares/authMiddleware.js"
 import multer from "multer"
 
@@ -9,9 +9,10 @@ const upload = multer({ storage: storage })
 const eventRouter = express.Router()
 
 eventRouter.post("/create", authMiddleware, upload.array("media"), createEventInDatabase)
+eventRouter.get("/", getAllEvents)
 eventRouter.get("/:id", getEvent)
 eventRouter.post("/rsvp", authMiddleware, updateRSVP)
-eventRouter.get("/:eventId/rsvps", getRSVPs)
+eventRouter.get("/:eventId/rsvps", authMiddleware, getRSVPs)
 
 export {
     eventRouter
