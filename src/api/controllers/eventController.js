@@ -151,7 +151,6 @@ const getAllEvents = async (req, res) => {
 
 }
 
-
 const getEvent = async (req, res) => {
     const { id } = req.params
 
@@ -182,6 +181,89 @@ const getRSVPs = async (req, res) => {
         return res.status(500).json({ msg: "Error fetching RSVPs", error: err.message })
     }
 }
+
+const updateEventInDatabase = async (req, res) => {
+    const { id } = req.params
+    const { title, description, startTime, endTime, timeZone, location, media, invitees } = req.body
+
+    if (!title || !startTime || !endTime || !timeZone || !location) {
+        return res.status(400).json({ msg: "Missing required fields" })
+    }
+
+    if (!req.user && !req.user.accessToken) {
+        return res.status(401).json({ msg: "Unauthorized" })
+    }
+
+    try {
+        const event = await eventData.findById(id)
+        if (!event) {
+            return res.status(404).json({ msg: "Event not found" })
+        }
+
+        event.title = title || event.title
+        event.desc = description || event.desc
+        event.dateTime.start.dateTime = startTime || event.dateTime.start.dateTime
+        event.dateTime.end.dateTime = endTime || event.dateTime.end.dateTime
+        event.dateTime.start.timeZone = timeZone || event.dateTime.start.timeZone
+        event.dateTime.end.timeZone = timeZone || event.dateTime.end.timeZone
+        event.location.address = location || event.location.address
+
+        if (media && Array.isArray(media)) {
+            const uploadedMedia = await uploadMediaToFilestack(media)
+            event.media = uploadedMedia
+        }
+
+        if (invitees && Array.isArray(invitees)) {
+            const inviteeObjectIds = invitees.map((id) => new mongoose.Types.ObjectId(id))
+            event.invitees = inviteeObjectIds
+
+            const users = await userData.find({ _id: { $in: inviteeObjectIds } })
+            for (let user of users) {
+                if (user.email) {
+                    await sendInvitationEmail(user.email, event)
+                }
+            }
+        }
+
+        if (req.user.accessToken) {
+            const oauth2Client = getAuthClient()
+            oauth2Client.setCredentials({ access_token: req.user.accessToken })
+
+            const googleEvent = await createEvent(oauth2Client, {
+                summary: title,
+                description,
+                start: {
+                    dateTime: startTime,
+                    timeZone: timeZone,
+                },
+                end: {
+                    dateTime: endTime,
+                    timeZone: timeZone,
+                },
+                location,
+            })
+        }
+
+        await event.save()
+        return res.status(200).json({ msg: "Event updated successfully!", event })
+    } catch (err) {
+        return res.status(500).json({ msg: "Error updating event", error: err.message })
+    }
+}
+
+const deleteEvent = async (req, res) => {
+    const { id } = req.params
+
+    try {
+        const event = await eventData.findByIdAndDelete(id)
+        if (!event) return res.status(404).json({ msg: "Event not found" })
+        return res.status(200).json({ msg: "Event deleted successfully", event })
+    }
+    catch (err) {
+        return res.status(500).json({ msg: "Error deleting event", error: err.message })
+    }
+}
+
 
 const updateRSVP = async (req, res) => {
     const { eventId, status } = req.body
@@ -258,8 +340,10 @@ export {
     createEventInDatabase,
     getAllEvents,
     getEvent,
+    updateEventInDatabase,
+    deleteEvent,
     updateRSVP,
     getRSVPs,
-    sendInvitationEmail
+    sendInvitationEmail,
 }
 

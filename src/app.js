@@ -5,6 +5,7 @@ import passport from "passport"
 import session from "express-session"
 import { userRouter } from "./api/routes/userRoutes.js"
 import { eventRouter } from "./api/routes/eventRoutes.js"
+import { adminRouter } from "./api/routes/adminRoutes.js"
 import "./api/middlewares/OAuthMiddleware.js"
 
 dotenv.config()
@@ -27,6 +28,7 @@ app.use(passport.session())
 
 app.use(userRouter)
 app.use("/event", eventRouter)
+app.use("/admin", adminRouter)
 
 mongoose.connect(DB_URL)
     .then(() => {

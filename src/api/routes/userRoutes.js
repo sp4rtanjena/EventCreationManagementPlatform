@@ -27,6 +27,9 @@ userRouter.get("/user/auth/google/callback", passport.authenticate("google", {
     res.redirect("/")
 })
 
+//Role: User to Admin
+userRouter.put("/user/admin", userToAdmin)
+
 export {
     userRouter
 }
